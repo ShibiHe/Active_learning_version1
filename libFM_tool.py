@@ -328,16 +328,22 @@ def naive_baseline(omitMovie=True):
     movieDataBase.synchronize()
     movieDataBase.make_slice(count_movie_slice=range(1, 1201))
     movieDataBase.synchronize()
-    movieDataBase.store_data_to_file(fileName='train_data')
+    movieDataBase.store_data_to_file(fileName='train_original_data')
     movieDataBase.generate_libfm_data(omitMovie=omitMovie)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'train.libfm')
+    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'train_step1.libfm')
 
     movieDataBase.load_core_rating_data(sorted_rating_data)
     movieDataBase.make_slice(count_movie_slice=range(1201, 1441))
     movieDataBase.synchronize()
-    movieDataBase.store_data_to_file(fileName='test_data')
+    movieDataBase.store_data_to_file(fileName='test_original_data')
     movieDataBase.generate_libfm_data(omitMovie=omitMovie, shuffle=False)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test.libfm')
+    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test_step1.libfm')
+
+    # subprocess.call("./Generate/libFM -task r -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
+    #                 "-method sgd -dim '1,1, 80' -learn_rate 0.001 -iter 160 -out Generate/prediction", shell=True)
+    subprocess.call("./Generate/libFM -task r -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
+                    "-method mcmc -dim '1,1, 80' -out Generate/prediction", shell=True)
+    compute_error.computer_error()
 
 
 def experiment1():
@@ -427,4 +433,5 @@ def experiment1():
     compute_error.computer_error()
 
 if __name__ == '__main__':
+    naive_baseline()
     experiment1()
