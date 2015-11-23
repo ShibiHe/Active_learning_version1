@@ -339,6 +339,9 @@ def naive_baseline(omitMovie=True):
     movieDataBase.generate_libfm_data(omitMovie=omitMovie, shuffle=False)
     movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test_step1.libfm')
 
+    print '==================================='
+    print 'naive baseline regression started'
+    print '===================================\n'
     # subprocess.call("./Generate/libFM -task r -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
     #                 "-method sgd -dim '1,1, 80' -learn_rate 0.001 -iter 160 -out Generate/prediction", shell=True)
     subprocess.call("./Generate/libFM -task r -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
@@ -386,6 +389,10 @@ def experiment1():
     movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test_step2.libfm')
 
     """the test data is still in movieDataBase.core. Next is the step 1 """
+    print '==================================='
+    print 'step 1 binary classification started'
+    print '===================================\n'
+
     subprocess.call("./Generate/libFM -task c -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
                     "-method mcmc -out Generate/prediction", shell=True)
     # subprocess.call("./Generate/libFM -task c -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
@@ -399,12 +406,20 @@ def experiment1():
     movieDataBase.make_alternative_user_movie_matrix(alternative_user_movie_list)
 
     """ step 2 regression"""
+    print '==================================='
+    print 'step 2 regression started'
+    print '===================================\n'
     # subprocess.call("./Generate/libFM -task r -train Generate/train_step2.libfm -test Generate/test_step2.libfm "
     #                 "-method mcmc -out Generate/prediction", shell=True)
-    subprocess.call("./Generate/libFM -task r -train Generate/train_step2.libfm -test Generate/test_step2.libfm "
-                    "-method sgd -learn_rate 0.001 -iter 70 -out Generate/prediction", shell=True)
+
+    print 'now we skip this part, because we currently regard all positive results as active learning alternative set.'
+    # subprocess.call("./Generate/libFM -task r -train Generate/train_step2.libfm -test Generate/test_step2.libfm "
+    #                 "-method sgd -learn_rate 0.001 -iter 70 -out Generate/prediction", shell=True)
 
     """ step 3  add active learning result into train_original_data """
+    print '==================================='
+    print 'step 3 active learning regression started'
+    print '===================================\n'
     movieDataBase.make_user_movie_rating_matrix(test_original_data)
     active_learning_train_data = []
 
@@ -430,6 +445,8 @@ def experiment1():
 
     subprocess.call("./Generate/libFM -task r -train Generate/train_step3.libfm -test Generate/test_step3.libfm "
                     "-method sgd -dim '1,1, 80' -learn_rate 0.001 -iter 160 -out Generate/prediction", shell=True)
+    print 'number of alternative user-movie requests=', len(alternative_user_movie_list)
+    print 'number of gained active learning user-movie data=', count
     compute_error.computer_error()
 
 if __name__ == '__main__':

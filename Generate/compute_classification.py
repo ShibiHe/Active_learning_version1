@@ -3,6 +3,7 @@ TRUE_POSITIVE_SELECTOR = 0.5
 
 
 def compute_classification(number_of_positive_data=None):
+    print 'the sigmoid selector is', TRUE_POSITIVE_SELECTOR
     if __name__ == '__main__':
         f1 = open('test_step1.libfm')
     else:
@@ -59,7 +60,6 @@ def compute_classification(number_of_positive_data=None):
             tn += 1
         if pred_value == 1:
             positive += 1
-            selected_data.append(i)
 
     print 'number of positive test data=', number_of_positive_data
     print 'tp={0} fp={1} fn={2} tn={3}'.format(tp, fp, fn, tn)
