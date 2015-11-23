@@ -396,7 +396,7 @@ def experiment1():
     # subprocess.call("./Generate/libFM -task r -train Generate/train_step2.libfm -test Generate/test_step2.libfm "
     #                 "-method mcmc -out Generate/prediction", shell=True)
     subprocess.call("./Generate/libFM -task r -train Generate/train_step2.libfm -test Generate/test_step2.libfm "
-                    "-method sgd -learn_rate 0.001 -iter 400 -out Generate/prediction", shell=True)
+                    "-method sgd -learn_rate 0.001 -iter 70 -out Generate/prediction", shell=True)
 
     """ step 3  add active learning result into train_original_data """
     movieDataBase.make_user_movie_rating_matrix(test_original_data)
@@ -418,12 +418,12 @@ def experiment1():
     movieDataBase.store_data_to_file(train_add_active_learning_data, fileName='train_add_active_learning_data')
     movieDataBase.generate_libfm_data(train_add_active_learning_data)
     movieDataBase.store_data_to_file(movieDataBase.libfm_data, fileName='train_step3.libfm')
-    subprocess.call("./Generate/libFM -task r -train Generate/train_step3.libfm -test Generate/test_step3.libfm "
-                    "-method mcmc -out Generate/prediction", shell=True)
-    compute_error.computer_error()
+    # subprocess.call("./Generate/libFM -task r -train Generate/train_step3.libfm -test Generate/test_step3.libfm "
+    #                 "-method mcmc -out Generate/prediction", shell=True)
+    # compute_error.computer_error()
 
     subprocess.call("./Generate/libFM -task r -train Generate/train_step3.libfm -test Generate/test_step3.libfm "
-                    "-method sgd -dim '1,1, 32' -learn_rate 0.001 -iter 200 -out Generate/prediction", shell=True)
+                    "-method sgd -dim '1,1, 80' -learn_rate 0.001 -iter 160 -out Generate/prediction", shell=True)
     compute_error.computer_error()
 
 if __name__ == '__main__':

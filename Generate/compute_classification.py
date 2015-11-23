@@ -63,8 +63,7 @@ def compute_classification(number_of_positive_data=None):
 
     print 'number of positive test data=', number_of_positive_data
     print 'tp={0} fp={1} fn={2} tn={3}'.format(tp, fp, fn, tn)
-    print 'precision={0} recall={1} positive={2}'.format(float(tp)/(tp+fp), float(tp)/(tp+fn), positive)
-
+    print 'positive test accuracy={0}'.format(float(tp)/number_of_positive_data)
     return selected_data
 
 if __name__ == '__main__':
