@@ -1,4 +1,4 @@
-# Active_learning_ml_100k
+# Active_learning_version1
 
 ##step1: unzip the Test_data
 ##step2: add libFM executable file into Generate
