@@ -2,9 +2,7 @@ __author__ = 'frankhe'
 import os
 import cPickle
 import random
-import subprocess
-from Generate import compute_classification
-from Generate import compute_error
+import numpy
 
 
 class MovieDataBase(object):
@@ -14,6 +12,7 @@ class MovieDataBase(object):
         file_u_dot_item = open('u.item')
         movie_information_list = file_u_dot_item.readlines()
         self.movie_information_list = [x.split('|') for x in movie_information_list]
+        self.TOTAL_MOVIES = len(self.movie_information_list)
         # print len(self.movie_information_list) 1682
 
         file_u_dot_item.close()
@@ -26,6 +25,7 @@ class MovieDataBase(object):
         file_u_dot_data = open('u.data')
         self.original_rating_data = file_u_dot_data.readlines()
         file_u_dot_data.close()
+        self.TOTAL_RATINGS = len(self.original_rating_data)
         # print len(self.original_rating_data) 100,000
 
         file_u_dot_genre = open('u.genre')
@@ -37,6 +37,7 @@ class MovieDataBase(object):
         user_information = file_u_dot_user.readlines()
         self.user_information = [x.split('|') for x in user_information]
         file_u_dot_user.close()
+        self.TOTAL_USERS = len(self.user_information)
         # print len(self.user_information) 943
 
         file_u_dot_occupation = open('u.occupation')
@@ -45,6 +46,8 @@ class MovieDataBase(object):
         # print len(self.user_occupation) 21
 
         self.complete_rating_data = []
+        self.movie_avg_rating = []
+        self.user_MSE = []
         self.out_rating_data = []
 
         """ this is the prime data, slice and sort are all executed on this data list"""
@@ -61,6 +64,11 @@ class MovieDataBase(object):
         self.alternative_movie_user_matrix = dict()
         self.alternative_user_set = set()
         self.alternative_movie_set = set()
+
+        """this is for storing numpy matrix"""
+        self.numpy_rating_matrix = []
+        self.from_movie_id_get_movie_num = []
+        self.from_movie_num_get_movie_id = []
 
     @staticmethod
     def convert_date_to_int(productionDate):
@@ -108,6 +116,7 @@ class MovieDataBase(object):
             self.complete_rating_data = cPickle.load(file1)
             file1.close()
             self.core_rating_data = self.complete_rating_data
+            self.calculate_movie_avg_user_mse()
             return
         else:
             file1 = open('./Generate/complete_rating_data', mode='wb+')
@@ -122,11 +131,11 @@ class MovieDataBase(object):
             movieName, movieProductionDate, movieWebsite, movieAttribute = self.get_movie_information(movieId)
             userAge, userGender, userOccupation, userZipCode = self.get_user_information(userId)
             one_record = [userId, movieId, rating, commentDate, movieName, movieProductionDate, movieAttribute,
-                              userAge, userGender, userOccupation, userZipCode]
+                          userAge, userGender, userOccupation, userZipCode]
             self.complete_rating_data.append(one_record)
         cPickle.dump(self.complete_rating_data, file1, protocol=2)
         self.core_rating_data = self.complete_rating_data[:]
-        self.out_rating_data = self.complete_rating_data[:]
+        self.calculate_movie_avg_user_mse()
         file1.close()
 
     def make_slice(self, userId_slice=None, movieId_slice=None, rating_slice=None, data_list=None,
@@ -159,7 +168,7 @@ class MovieDataBase(object):
             if (userId_slice and values[0] not in userId_slice) or (movieId_slice and values[1] not in movieId_slice) \
                 or (rating_slice and values[2] not in rating_slice) \
                     or (count_movie_slice and movie_ranking_number not in count_movie_slice) \
-                        or (movieProductionDate_slice and (end_date < values[5] or values[5] < start_date)):
+                    or (movieProductionDate_slice and (end_date < values[5] or values[5] < start_date)):
                 continue
             self.out_rating_data.append(values)
 
@@ -226,6 +235,22 @@ class MovieDataBase(object):
             else:
                 self.alternative_movie_user_matrix[movieId][userId] = True
 
+    def calculate_movie_avg_user_mse(self):
+        self.make_user_movie_rating_matrix(self.complete_rating_data)
+        self.movie_avg_rating = [0] * (self.TOTAL_MOVIES+1)
+        self.user_MSE = [0] * (self.TOTAL_USERS+1)
+        for movieId in self.movie_user_rating_matrix:
+            rating_sum = 0
+            rating_num = 0
+            for userId in self.movie_user_rating_matrix[movieId]:
+                rating_num += 1
+                rating_sum += self.movie_user_rating_matrix[movieId][userId]
+            self.movie_avg_rating[movieId] = float(rating_sum)/rating_num
+        for userId in self.user_movie_rating_matrix:
+            for movieId in self.user_movie_rating_matrix[userId]:
+                difference = (float(self.user_movie_rating_matrix[userId][movieId])-self.movie_avg_rating[movieId])
+                self.user_MSE[userId] += difference*difference
+
     def make_shuffle(self):
         self.out_rating_data = self.core_rating_data[:]
         random.shuffle(self.out_rating_data)
@@ -241,7 +266,7 @@ class MovieDataBase(object):
         negative_data = []
         if addAllUsers:
             for movieId in self.movieId_set:
-                for userId in range(1, 944):
+                for userId in range(1, self.TOTAL_USERS+1):
                     if self.movie_user_rating_matrix[movieId].get(userId) is None:
                         negative_data.append([userId, movieId, -1])
         else:
@@ -268,10 +293,10 @@ class MovieDataBase(object):
             rating = values[2]
             libfm_line = [rating, str(userId-1)+':1']
 
-            count = 943
+            count = self.TOTAL_USERS
             if not omitMovie:
                 libfm_line.append(str(movieId+count-1) + ':1')
-                count = 943+1682  # 2625
+                count = self.TOTAL_USERS + self.TOTAL_MOVIES  # 943+1682  2625
 
             for attribute_pos in range(len(self.movie_attribute_list[movieId-1])):
                 if self.movie_attribute_list[movieId-1][attribute_pos] == '1':
@@ -318,137 +343,93 @@ class MovieDataBase(object):
     def synchronize(self):
         self.core_rating_data = self.out_rating_data[:]
 
+    def compute_numpy_matrix(self, data_list=None):
+        """compute numpy matrix"""
+        if data_list is None:
+            data_list = self.core_rating_data
+        movie_count = 0
+        from_movie_num_get_movie_id = [0] * (self.TOTAL_MOVIES+1)
+        from_movie_id_get_movie_num = [0] * (self.TOTAL_MOVIES+1)
+        rating_matrix = numpy.zeros([self.TOTAL_USERS, self.TOTAL_MOVIES])
+        for values in data_list:
+            userId = values[0]
+            movieId = values[1]
+            if from_movie_id_get_movie_num[movieId] == 0:
+                movie_count += 1
+                from_movie_id_get_movie_num[movieId] = movie_count
+                from_movie_num_get_movie_id[movie_count] = movieId
+            rating = values[2]
+            rating_matrix[userId-1, from_movie_id_get_movie_num[movieId]-1] = rating
+        rating_matrix = rating_matrix[:, :movie_count]
 
-def naive_baseline(omitMovie=True):
-    movieDataBase = MovieDataBase()
-    movieDataBase.generate_complete_rating_data(regenerate=False)
-
-    movieDataBase.make_sorted_rating_data([5, 1, 0])
-    sorted_rating_data = movieDataBase.out_rating_data[:]
-    movieDataBase.synchronize()
-    movieDataBase.make_slice(count_movie_slice=range(1, 1201))
-    movieDataBase.synchronize()
-    movieDataBase.store_data_to_file(fileName='train_original_data')
-    movieDataBase.generate_libfm_data(omitMovie=omitMovie)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'train_step1.libfm')
-
-    movieDataBase.load_core_rating_data(sorted_rating_data)
-    movieDataBase.make_slice(count_movie_slice=range(1201, 1441))
-    movieDataBase.synchronize()
-    movieDataBase.store_data_to_file(fileName='test_original_data')
-    movieDataBase.generate_libfm_data(omitMovie=omitMovie, shuffle=False)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test_step1.libfm')
-
-    print '==================================='
-    print 'naive baseline regression started'
-    print '===================================\n'
-    # subprocess.call("./Generate/libFM -task r -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
-    #                 "-method sgd -dim '1,1, 80' -learn_rate 0.001 -iter 160 -out Generate/prediction", shell=True)
-    subprocess.call("./Generate/libFM -task r -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
-                    "-method mcmc -dim '1,1, 80' -out Generate/prediction", shell=True)
-    compute_error.computer_error()
+        print 'numpy matrix is {0}*{1}'.format(self.TOTAL_USERS, movie_count)
+        self.numpy_rating_matrix = rating_matrix
+        self.from_movie_id_get_movie_num = from_movie_id_get_movie_num
+        self.from_movie_num_get_movie_id = from_movie_num_get_movie_id
 
 
-def experiment1():
-    movieDataBase = MovieDataBase()
-    movieDataBase.generate_complete_rating_data(regenerate=False)
+class DataProcess(object):
+    def __init__(self):
+        self.TRAIN_MOVIES = 1200
+        self.TEST_MOVIES = 240
+        self.train_original_data = []
+        self.train_addNegative_data = []
+        self.test_original_data = []
+        self.test_addAllNegative_data = []
 
-    movieDataBase.make_sorted_rating_data([5, 1, 0])
-    sorted_rating_data = movieDataBase.out_rating_data[:]
-    movieDataBase.synchronize()
-    movieDataBase.make_slice(count_movie_slice=range(1, 1201))
-    movieDataBase.synchronize()
+        self.train_rating_numpy_matrix = []
+        self.train_from_movie_id_get_movie_num = []
+        self.train_from_movie_num_get_movie_id = []
+        self.test_rating_numpy_matrix = []
+        self.test_from_movie_id_get_movie_num = []
+        self.test_from_movie_num_get_movie_id = []
+        self.movieDataBase = None
+        self.generate_data()
 
-    train_original_data = movieDataBase.core_rating_data[:]
-    movieDataBase.store_data_to_file(fileName='train_original_data')
-    movieDataBase.generate_libfm_data(omitMovie=True)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'train_step2.libfm')
+    def generate_data(self):
+        movieDataBase = MovieDataBase()
+        movieDataBase.generate_complete_rating_data(regenerate=False)
 
-    movieDataBase.add_negative_data()
-    movieDataBase.synchronize()
-    train_addNegative_data = movieDataBase.core_rating_data[:]
-    movieDataBase.store_data_to_file(fileName='train_addNegative_data')
-    movieDataBase.generate_libfm_data(omitMovie=True)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'train_step1.libfm')
+        movieDataBase.make_sorted_rating_data([5, 1, 0])
+        sorted_rating_data = movieDataBase.out_rating_data[:]
+        movieDataBase.synchronize()
+        movieDataBase.make_slice(count_movie_slice=range(1, self.TRAIN_MOVIES+1))
+        movieDataBase.synchronize()
+        movieDataBase.compute_numpy_matrix()
+        self.train_rating_numpy_matrix = movieDataBase.numpy_rating_matrix
+        self.train_from_movie_num_get_movie_id = movieDataBase.from_movie_num_get_movie_id
+        self.train_from_movie_id_get_movie_num = movieDataBase.from_movie_id_get_movie_num
 
-    movieDataBase.load_core_rating_data(sorted_rating_data)
-    movieDataBase.make_slice(count_movie_slice=range(1201, 1441))
-    movieDataBase.synchronize()
+        self.train_original_data = movieDataBase.core_rating_data[:]
+        movieDataBase.store_data_to_file(fileName='train_original_data')
+        movieDataBase.generate_libfm_data(omitMovie=True)
+        movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'train_step2.libfm')
 
-    test_original_data = movieDataBase.core_rating_data[:]
-    movieDataBase.store_data_to_file(fileName='test_original_data')
-    movieDataBase.generate_libfm_data(shuffle=False)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, fileName='test_step3.libfm')
+        movieDataBase.add_negative_data()
+        movieDataBase.synchronize()
+        self.train_addNegative_data = movieDataBase.core_rating_data[:]
+        movieDataBase.store_data_to_file(fileName='train_addNegative_data')
+        movieDataBase.generate_libfm_data(omitMovie=True)
+        movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'train_step1.libfm')
 
-    movieDataBase.add_negative_data(addAllUsers=True)
-    movieDataBase.synchronize()
-    test_addAllNegative_data = movieDataBase.core_rating_data[:]
-    movieDataBase.store_data_to_file(fileName='test_addAllNegative_data')
-    movieDataBase.generate_libfm_data(omitMovie=True, shuffle=False)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test_step1.libfm')
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test_step2.libfm')
+        movieDataBase.load_core_rating_data(sorted_rating_data)
+        movieDataBase.make_slice(count_movie_slice=range(self.TRAIN_MOVIES+1, self.TRAIN_MOVIES+self.TEST_MOVIES+1))
+        movieDataBase.synchronize()
+        movieDataBase.compute_numpy_matrix()
+        self.test_rating_numpy_matrix = movieDataBase.numpy_rating_matrix
+        self.test_from_movie_num_get_movie_id = movieDataBase.from_movie_num_get_movie_id
+        self.test_from_movie_id_get_movie_num = movieDataBase.from_movie_id_get_movie_num
 
-    """the test data is still in movieDataBase.core. Next is the step 1 """
-    print '==================================='
-    print 'step 1 binary classification started'
-    print '===================================\n'
+        self.test_original_data = movieDataBase.core_rating_data[:]
+        movieDataBase.store_data_to_file(fileName='test_original_data')
+        movieDataBase.generate_libfm_data(shuffle=False)
+        movieDataBase.store_data_to_file(movieDataBase.libfm_data, fileName='test_step3.libfm')
 
-    subprocess.call("./Generate/libFM -task c -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
-                    "-method mcmc -out Generate/prediction", shell=True)
-    # subprocess.call("./Generate/libFM -task c -train Generate/train_step1.libfm -test Generate/test_step1.libfm "
-    #                 "-method sgd -learn_rate 0.01 -out Generate/prediction", shell=True)
-    selected_data_positions = compute_classification.compute_classification(len(test_original_data))
-    alternative_user_movie_list = []
-    for index in selected_data_positions:
-        userId = movieDataBase.core_rating_data[index][0]
-        movieId = movieDataBase.core_rating_data[index][1]
-        alternative_user_movie_list.append([userId, movieId])
-    movieDataBase.make_alternative_user_movie_matrix(alternative_user_movie_list)
-
-    """ step 2 regression"""
-    print '==================================='
-    print 'step 2 regression started'
-    print '===================================\n'
-    # subprocess.call("./Generate/libFM -task r -train Generate/train_step2.libfm -test Generate/test_step2.libfm "
-    #                 "-method mcmc -out Generate/prediction", shell=True)
-
-    print 'now we skip this part, because we currently regard all positive results as active learning alternative set.'
-    # subprocess.call("./Generate/libFM -task r -train Generate/train_step2.libfm -test Generate/test_step2.libfm "
-    #                 "-method sgd -learn_rate 0.001 -iter 70 -out Generate/prediction", shell=True)
-
-    """ step 3  add active learning result into train_original_data """
-    print '==================================='
-    print 'step 3 active learning regression started'
-    print '===================================\n'
-    movieDataBase.make_user_movie_rating_matrix(test_original_data)
-    active_learning_train_data = []
-
-    # this scheme is adding every thing in active learning
-    count = 0
-    for values in alternative_user_movie_list:
-        userId = values[0]
-        movieId = values[1]
-        ratings = movieDataBase.user_movie_rating_matrix.get(userId)
-        if ratings is not None:
-            rating = ratings.get(movieId)
-            if rating is not None:
-                active_learning_train_data.append([userId, movieId, rating])
-                count += 1
-
-    train_add_active_learning_data = train_original_data + active_learning_train_data
-    movieDataBase.store_data_to_file(train_add_active_learning_data, fileName='train_add_active_learning_data')
-    movieDataBase.generate_libfm_data(train_add_active_learning_data)
-    movieDataBase.store_data_to_file(movieDataBase.libfm_data, fileName='train_step3.libfm')
-    # subprocess.call("./Generate/libFM -task r -train Generate/train_step3.libfm -test Generate/test_step3.libfm "
-    #                 "-method mcmc -out Generate/prediction", shell=True)
-    # compute_error.computer_error()
-
-    subprocess.call("./Generate/libFM -task r -train Generate/train_step3.libfm -test Generate/test_step3.libfm "
-                    "-method sgd -dim '1,1, 80' -learn_rate 0.001 -iter 160 -out Generate/prediction", shell=True)
-    print 'number of alternative user-movie requests=', len(alternative_user_movie_list)
-    print 'number of gained active learning user-movie data=', count
-    compute_error.computer_error()
-
-if __name__ == '__main__':
-    naive_baseline()
-    experiment1()
+        movieDataBase.add_negative_data(addAllUsers=True)
+        movieDataBase.synchronize()
+        self.test_addAllNegative_data = movieDataBase.core_rating_data[:]
+        movieDataBase.store_data_to_file(fileName='test_addAllNegative_data')
+        movieDataBase.generate_libfm_data(omitMovie=True, shuffle=False)
+        movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test_step1.libfm')
+        movieDataBase.store_data_to_file(movieDataBase.libfm_data, 'test_step2.libfm')
+        self.movieDataBase = movieDataBase
