@@ -20,7 +20,6 @@ class Database(object):
         # nums must be explicitly assigned, since we won't get it from recovered data directly 
         self.USER_NUM = user_num
         self.ITEM_NUM = item_num
-        self.RATING_NUM = -1 # compute after loading data
         
         self.storage_dir = "./Generate"
         self.itemfile = itemfile
@@ -45,14 +44,13 @@ class Database(object):
             self.parser.load_raw_data()
             self.attribute_list = self.parser.extract_attr_list()
             self.rating_list = self.parser.extract_rating_list(sort_data)
-            self.RATING_NUM = len(self.rating_list)
             #XXX: seems not necessary to dump
             #self._dump_rating_list(self.storage_dir+"dumpable.data")
 
     def make_train_test_matrix(self, train_test_ratio = 0.8):
         #FIXME: maybe separate by item is more appropriate
-        self.train_matrix, self.train_item_id_of_col, _ = self._extract_rating_matrix(0, int(self.RATING_NUM*train_test_ratio))
-        self.test_matrix, self.test_item_id_of_col, _ = self._extract_rating_matrix(int(self.RATING_NUM*train_test_ratio)+1, self.RATING_NUM-1)
+        self.train_matrix, self.train_item_id_of_col, _ = self._extract_rating_matrix(0, int(self.ITEM_NUM*train_test_ratio))
+        self.test_matrix, self.test_item_id_of_col, _ = self._extract_rating_matrix(int(self.ITEM_NUM*train_test_ratio)+1, self.ITEM_NUM-1)
 
     def _recover_dumpable_data(self, filename):
         f = open(filename, mode='rb')
@@ -132,10 +130,12 @@ class Database(object):
         col_num_of_item = [-1 for i in range(self.ITEM_NUM)] # we may not have all items, so compression is needed
         item_id_of_col = []
         rating_matrix = np.zeros([self.USER_NUM, tail-head+1])
-        item_count = 0
-        for values in self.rating_list[head:tail]:
+        item_count = -1
+        for values in self.rating_list:
             userID = values[0]
             itemID = values[1]
+            if itemID < head or itemID > tail:
+                continue
             if col_num_of_item[itemID] < 0:
                 item_count += 1
                 col_num_of_item[itemID] = item_count
